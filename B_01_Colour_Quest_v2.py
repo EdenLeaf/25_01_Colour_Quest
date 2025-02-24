@@ -179,6 +179,8 @@ class Play:
         self.rounds_wanted = IntVar()
         self.rounds_wanted.set(how_many)
 
+        self.rounds_won = IntVar()
+
         # colour lists and score list
         self.round_colour_list = []
         self.all_scores_list = []
@@ -188,6 +190,9 @@ class Play:
 
         self.game_frame = Frame(self.play_box)
         self.game_frame.grid(padx=10, pady=10)
+
+        # If users press the 'x' on the game window, end the entire game!
+        self.play_box.protocol('WM_DELETE_WINDOW', root.destroy)
 
         # body font for most labels...
         body_font = ("Arial", "12")
@@ -211,6 +216,7 @@ class Play:
         # Retrieve labels so that they can be configured later
         self.heading_label = play_labels_ref[0]
         self.target_label = play_labels_ref[1]
+        self.choose_label = play_labels_ref[2]
         self.results_label = play_labels_ref[3]
 
         # set up colour buttons
@@ -237,8 +243,8 @@ class Play:
         control_button_list = [
             [self.game_frame, "Next Round", "#0057D8", self.new_round, 21, 5, None],
             [self.hints_stats_frame, "Hints", "#FF8000", self.to_hints, 10, 0, 0],
-            [self.hints_stats_frame, "Stats", "#333333", "", 10, 0, 1],
-            [self.game_frame, "End", "#990000", self.close_play, 21, 7, None]
+            [self.hints_stats_frame, "Stats", "#333333", self.to_stats, 10, 0, 1],
+            [self.game_frame, "End Game", "#990000", self.close_play, 21, 7, None]
         ]
 
         # create buttons and add to list
@@ -256,6 +262,17 @@ class Play:
         self.stats_button = control_ref_list[2]
         self.end_game_button = control_ref_list[3]
 
+        self.stats_button.config(state=DISABLED)
+
+        # images for use on 'end game / play again' button
+        self.chicken_image = PhotoImage(file="chicken.png")
+        self.thumbs_up = PhotoImage(file="thumbs_up.png")
+
+        # End Game Button with chicken
+        self.end_game_button.config(text="End Game",
+                                    image=self.chicken_image,
+                                    compound="right", width=280)
+
         # Once interface has been created, invoke new round function for
         # first round
         self.new_round()
@@ -268,7 +285,6 @@ class Play:
 
         # retrieve no. of rounds played, add one to it and configure heading
         rounds_played = self.rounds_played.get()
-        rounds_played += 1
         self.rounds_played.set(rounds_played)
 
         rounds_wanted = self.rounds_wanted.get()
@@ -283,7 +299,7 @@ class Play:
         self.all_high_score_list.append(highest)
 
         # Update heading, and score to beat labels. "Hide" results label
-        self.heading_label.config(text=f"Round {rounds_played} of {rounds_wanted}")
+        self.heading_label.config(text=f"Round {rounds_played + 1} of {rounds_wanted}")
         self.target_label.config(text=f"Target Score: {median}", font=("Arial", "14", "bold"))
         self.results_label.config(text=f"{'=' * 7}", bg="#F0F0F0")
 
@@ -300,8 +316,16 @@ class Play:
          Retrieves which button was pushed (index 0 - 3), retrieves score and then compares
          it with median, updates results and adds results to stats list.
          """
+        # enable stats button after at least one round has been played
+        self.stats_button.config(state=NORMAL)
+
         # get user score and colour based on button press...
         score = int(self.round_colour_list[user_choice][1])
+
+        # add one to the no. of rounds played and retrieve no. of rounds won
+        rounds_played = self.rounds_played.get()
+        rounds_played += 1
+        self.rounds_played.set(rounds_played)
 
         # alternate way to get button name. Good for if buttons have been scrambled!
         colour_name = self.colour_button_ref[user_choice].cget('text')
@@ -313,6 +337,11 @@ class Play:
             result_text = f"Success! {colour_name} earned you {score} points"
             result_bg = "#82B366"
             self.all_scores_list.append(score)
+
+            rounds_won = self.rounds_won.get()
+            rounds_won += 1
+            self.rounds_won.set(rounds_won)
+
         else:
             result_text = f"Oops, {colour_name} ({score}) is less than the target."
             result_bg = "#F8CECC"
@@ -320,21 +349,31 @@ class Play:
 
         self.results_label.config(text=result_text, bg=result_bg)
 
-        # Printing area to generate test data for stats (delete when done)
-        print("all scores:", self.all_scores_list)
-        print("highest scores:", self.all_high_score_list)
-
         # enable stats and next buttons. disable colour buttons
         self.next_button.config(state=NORMAL)
         self.stats_button.config(state=NORMAL)
 
         # check to see if game is over
-        rounds_played = self.rounds_played.get()
         rounds_wanted = self.rounds_wanted.get()
 
         if rounds_played == rounds_wanted:
+
+            # work out success rate
+            rounds_won = self.rounds_won.get()
+            success_rate = rounds_won / rounds_played * 100
+            success_string = (f"Success rate: {rounds_won} / {rounds_played} "
+                          f"({success_rate:.0f})%")
+
+            # configure 'end game' labels / buttons
+            self.heading_label.config(text="Game... Over")
+            self.target_label.config(text=success_string)
+            self.choose_label.config(text="Please Click the stats button for "
+                                          "more info.")
             self.next_button.config(state=DISABLED, text="Game Over")
-            self.end_game_button.config(text="Play Again", bg="#006600")
+            self.stats_button.config(bg="#990000")
+            self.end_game_button.config(text="Play Again", bg="#006600",
+                                        image=self.thumbs_up,
+                                        compound="right", width=280)
 
         for item in self.colour_button_ref:
             item.config(state=DISABLED)
@@ -344,7 +383,8 @@ class Play:
         Displays hints for playing game
         :return:
         """
-        DisplayHints(self)
+        rounds_played = self.rounds_played.get()
+        DisplayHints(self, rounds_played)
 
     def close_play(self):
         # reshow root (ie:choose rounds) and end current
@@ -352,16 +392,149 @@ class Play:
         root.deiconify()
         self.play_box.destroy()
 
+    def to_stats(self):
+        """
+        Retrieves everything we need to display the game / round statistics
+        """
+
+        # IMPORTANT: retrieve number of rounds
+        # won as a number (rather than the 'self' container)
+        rounds_won = self.rounds_won.get()
+        stats_bundle = [rounds_won, self.all_scores_list, self.all_high_score_list]
+
+        Stats(self, stats_bundle)
+
+
+class Stats:
+    """
+    Displays stats for Colour Quest Game
+    """
+
+    def __init__(self, partner, all_stats_info):
+
+        # Disable buttons to prevent program crashing
+        partner.hints_button.config(state=DISABLED)
+        partner.end_game_button.config(state=DISABLED)
+        partner.stats_button.config(state=DISABLED)
+
+        # Extract info from master list
+        rounds_won = all_stats_info[0]
+        user_scores = all_stats_info[1]
+        high_scores = all_stats_info[2]
+
+        # sort user scores to find high score
+        user_scores.sort()
+
+        # setup dialogue box
+        self.stats_box = Toplevel()
+
+        # disable stats button
+        partner.stats_button.config(state=DISABLED)
+
+        # If user press cross at top, closes stats and 'releases' stats button
+        self.stats_box.protocol('WM_DELETE_WINDOW', partial(self.close_stats, partner))
+
+        self.stats_frame = Frame(self.stats_box, width=300,
+                                 height=200)
+        self.stats_frame.grid()
+
+        # math to populate stats dialogue
+        rounds_played = len(user_scores)
+
+        success_rate = rounds_won / rounds_played * 100
+        total_score = sum(user_scores)
+        max_possible = sum(high_scores)
+
+        best_score = user_scores[-1]
+        average_score = total_score / rounds_played
+
+        # strings for Stats labels...
+
+        success_string = (f"Success rate: {rounds_won} / {rounds_played} "
+                          f"({success_rate:.0f})%")
+        total_score_string = f"Total Score: {total_score}"
+        max_possible_string = f"Maximum Possible Score: {max_possible}"
+        best_score_string = f"Best Score: {best_score}"
+
+        # custom comment text and formatting
+        if total_score == max_possible:
+            comment_string = ("Amazing! You got the highest possible score!")
+            comment_colour = "#D5E8D4"
+
+        elif total_score == 0:
+            comment_string = ("Oops - You've lost every round! You might want "
+                              "to look at the hints!")
+            comment_colour = "#F8CECC"
+            best_score_string = f"Best Score: n/a"
+        else:
+            comment_string = ""
+            comment_colour = "#F0F0F0"
+
+        average_score_string = f"Average Score: {average_score:.0f}\n"
+
+        heading_font = ("Arial", "16", "bold")
+        normal_font = ("Arial", "14")
+        comment_font = ("Arial", "13")
+
+        # Label List (text | font | 'Sticky')
+        all_stats_strings = [
+            ["Statistics", heading_font, ""],
+            [success_string, normal_font, "W"],
+            [total_score_string, normal_font, "W"],
+            [max_possible_string, normal_font, "W"],
+            [comment_string, comment_font, "W"],
+            ["\nRound Stats", heading_font, ""],
+            [best_score_string, normal_font, "W"],
+            [average_score_string, normal_font, "W"]
+        ]
+
+        stats_label_ref_list = []
+        for count, item in enumerate(all_stats_strings):
+            self.stats_label = Label(self.stats_frame, text=item[0], font=item[1],
+                                     anchor="w", justify="left", padx=30, pady=5)
+            self.stats_label.grid(row=count, sticky=item[2], padx=10)
+            stats_label_ref_list.append(self.stats_label)
+
+        # Configure comment label background (for all won / all lost)
+        stats_comment_label = stats_label_ref_list[4]
+        stats_comment_label.config(bg=comment_colour)
+
+        self.dismiss_button = Button(self.stats_frame,
+                                     font=("Arial", "16", "bold"), text="Dismiss",
+                                     bg="#333333", fg="#FFFFFF", width=20,
+                                     command=partial(self.close_stats, partner))
+        self.dismiss_button.grid(row=8, padx=10, pady=10)
+
+        # closes help dialogue (used by button and x at top of dialogue
+
+    def close_stats(self, partner):
+        """
+        Closes stats dialogue box (and enables stats button)
+        """
+        # put buttons back to normal...
+        partner.hints_button.config(state=NORMAL)
+        partner.end_game_button.config(state=NORMAL)
+        partner.stats_button.config(state=NORMAL)
+        self.stats_box.destroy()
+
 
 class DisplayHints:
     """
     Displays hints for Colour Quest Game
     """
 
-    def __init__(self, partner):
+    def __init__(self, partner, rounds_played):
+        self.rounds_played = rounds_played
+
         # setup dialogue box and background colour
         background = "#ffe6cc"
         self.hint_box = Toplevel()
+
+        # disable help, stats AND end game buttons to prevent users from leaving a dialogue
+        # box open and then going back to the rounds dialogue
+        partner.hints_button.config(state=DISABLED)
+        partner.end_game_button.config(state=DISABLED)
+        partner.stats_button.config(state=DISABLED)
 
         # disable hint button
         partner.hints_button.config(state=DISABLED)
@@ -408,8 +581,13 @@ class DisplayHints:
         """
         Closes hint dialogue box (and enables hint button)
         """
-        # put hint button back to normal...
+        # put help and and game button back to normal
         partner.hints_button.config(state=NORMAL)
+        partner.end_game_button.config(state=NORMAL)
+        #only enable stats button if played >= 1 round
+        if self.rounds_played >= 1:
+            partner.stats_button.config(state=NORMAL)
+
         self.hint_box.destroy()
 
 
